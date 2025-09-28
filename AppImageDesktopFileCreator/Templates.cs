@@ -21,7 +21,7 @@ internal static class Templates
 
     internal const string UninstallFile = 
         """
-        #!/bin/bash
+        #!/usr/bin/env bash
 
         rm -f "%DesktopFilePath%"
         rm -f "%AppPath%"

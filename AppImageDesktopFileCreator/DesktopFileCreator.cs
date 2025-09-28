@@ -181,6 +181,8 @@ public static class DesktopFileCreator
             Command = pathData.UninstallFilePath,
             Icon = "edit-delete-symbolic"
         });
+
+        uninstallFileText = uninstallFileText.Replace("\r\n", "\n");
         
         File.WriteAllText(pathData.UninstallFilePath, uninstallFileText + Environment.NewLine);
         File.SetUnixFileMode(pathData.UninstallFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupExecute);
@@ -212,6 +214,8 @@ public static class DesktopFileCreator
             var actionCodeList = string.Join(";", actionNames);
             desktopFileText += Environment.NewLine + $"Actions={actionCodeList}" + Environment.NewLine + actionText;
         }
+        
+        desktopFileText = desktopFileText.Replace("\r\n", "\n");
         
         File.WriteAllText(pathData.DesktopFilePath, desktopFileText + Environment.NewLine);
     }
