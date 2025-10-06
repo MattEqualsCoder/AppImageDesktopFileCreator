@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>MattEqualsCoder.AppImageDesktopFileCreator</PackageId>
-        <Version>0.1.1</Version>
+        <Version>0.1.2</Version>
         <Title>AppImage Desktop File Creator</Title>
         <Authors>MattEqualsCoder</Authors>
         <PackageProjectUrl>https://github.com/MattEqualsCoder/AppImageDesktopFileCreator</PackageProjectUrl>
@@ -30,6 +30,10 @@
             <PackagePath></PackagePath>
             <Visible>True</Visible>
         </None>
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="ini-parser" Version="2.5.2" />
     </ItemGroup>
 
 </Project>

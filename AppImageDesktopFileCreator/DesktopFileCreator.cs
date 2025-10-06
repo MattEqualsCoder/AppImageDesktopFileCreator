@@ -1,5 +1,8 @@
-﻿using System.Runtime.Versioning;
+﻿using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Text;
+using IniParser;
+using IniParser.Model;
 
 namespace AppImageDesktopFileCreator;
 
@@ -75,7 +78,6 @@ public static class DesktopFileCreator
             };
         }
 
-
         try
         {
             if (request.AddUninstallAction)
@@ -104,10 +106,32 @@ public static class DesktopFileCreator
                 ErrorMessage = $"Failed creating the desktop file: {e.Message}"
             };
         }
+
+        var mimeTypeSuccessful = false;
+        string? mimeTypeError = null;
+        
+        try
+        {
+            if (request.CustomMimeTypeInfo != null)
+            {
+                mimeTypeSuccessful = CreateMimeTypeFiles(request, pathData, out mimeTypeError);
+            }
+        }
+        catch (Exception e)
+        {
+            return new CreateDesktopFileResponse
+            {
+                Success = true,
+                MimeTypeSuccessful = false,
+                MimeTypeError = $"Failed creating mime type file: {e.Message}"
+            };
+        }
         
         return new CreateDesktopFileResponse
         {
-            Success = true
+            Success = true,
+            MimeTypeSuccessful = mimeTypeSuccessful,
+            MimeTypeError = mimeTypeError
         };
     }
     
@@ -209,6 +233,11 @@ public static class DesktopFileCreator
             }
         }
 
+        if (request.CustomMimeTypeInfo != null)
+        {
+            desktopFileText += Environment.NewLine + $"MimeType={request.CustomMimeTypeInfo.MimeType}";
+        }
+
         if (actionNames.Count > 0)
         {
             var actionCodeList = string.Join(";", actionNames);
@@ -218,6 +247,136 @@ public static class DesktopFileCreator
         desktopFileText = desktopFileText.Replace("\r\n", "\n");
         
         File.WriteAllText(pathData.DesktopFilePath, desktopFileText + Environment.NewLine);
+    }
+
+    private static bool CreateMimeTypeFiles(CreateDesktopFileRequest request, PathData pathData, out string? error)
+    {
+        var mimeType = request.CustomMimeTypeInfo?.MimeType;
+        var description = request.CustomMimeTypeInfo?.Description;
+        var globPattern = request.CustomMimeTypeInfo?.GlobPattern;
+
+        if (string.IsNullOrEmpty(mimeType) || mimeType.Contains('/') || mimeType.Split("/").Length != 2)
+        {
+            throw new InvalidOperationException("Invalid mime type");
+        }
+
+        if (string.IsNullOrEmpty(globPattern) || !globPattern.StartsWith("*."))
+        {
+            throw new InvalidOperationException("Invalid glob pattern");
+        }
+        
+        var mimeFolder = GetMimePackagesFolder();
+        if (!Directory.Exists(mimeFolder))
+        {
+            Directory.CreateDirectory(mimeFolder);
+        }
+
+        var mimePath = GetMimeFilePath(mimeFolder, mimeType);
+        if (File.Exists(mimePath))
+        {
+            File.Delete(mimePath);
+        }
+
+        var mimeDetails = Templates.MimeTypeFile;
+        mimeDetails = mimeDetails.Replace("%MimeType%", mimeType);
+        mimeDetails = mimeDetails.Replace("%Description%", description);
+        mimeDetails = mimeDetails.Replace("%GlobPattern%", globPattern);
+        mimeDetails = mimeDetails.Replace("\r\n", "\n");
+        File.WriteAllText(mimePath, mimeDetails);
+
+        var mimeListPath = Path.Combine(GetDesktopFolder(), "mimeapps.list");
+
+        var parser = new FileIniDataParser();
+        var data = new IniData();
+        if (File.Exists(mimeListPath))
+        {
+            data = parser.ReadFile(mimeListPath);
+        }
+
+        if (!data.Sections.ContainsSection("Default Applications"))
+        {
+            data.Sections.AddSection("Default Applications");
+        }
+        data["Default Applications"][mimeType] = Path.GetFileName(pathData.DesktopFilePath);
+
+        if (request.CustomMimeTypeInfo?.AutoAssociate == true)
+        {
+            if (!data.Sections.ContainsSection("Added Associations"))
+            {
+                data.Sections.AddSection("Added Associations");
+            }
+            data["Added Associations"][mimeType] = Path.GetFileName(pathData.DesktopFilePath);
+        }
+        
+        parser.WriteFile(mimeListPath, data);
+
+        if (!UpdateMimeDatabase())
+        {
+            error = "Error updating mime database";
+        }
+        else if (!UpdateDesktopDatabase())
+        {
+            error = "Error updating desktop database";
+        }
+        else
+        {
+            error = "";
+        }
+
+        return string.IsNullOrEmpty(error);
+    }
+
+    private static bool UpdateMimeDatabase()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "update-mime-database",
+            Arguments = GetMimeFolder(),
+            RedirectStandardOutput = false,
+            UseShellExecute = true,
+            CreateNoWindow = true
+        };
+
+        using var process = new Process();
+        process.StartInfo = startInfo;
+        try
+        {
+            process.Start();
+            process.WaitForExit();
+            Console.WriteLine($"Console App exited with code: {process.ExitCode}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting or running console app: {ex.Message}");
+            return false;
+        }
+    }
+    
+    private static bool UpdateDesktopDatabase()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "update-desktop-database",
+            RedirectStandardOutput = false,
+            UseShellExecute = true,
+            CreateNoWindow = true
+        };
+
+        using var process = new Process();
+        process.StartInfo = startInfo;
+        try
+        {
+            process.Start();
+            process.WaitForExit();
+            Console.WriteLine($"Console App exited with code: {process.ExitCode}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting or running console app: {ex.Message}");
+            return false;
+        }
     }
 
     private static string ApplyReplacements(string toUpdate, CreateDesktopFileRequest request, PathData pathData)
@@ -272,6 +431,21 @@ public static class DesktopFileCreator
     private static string GetEscapedPathForDesktop(string path)
     {
         return path.Replace(" ", "\\s");
+    }
+
+    private static string GetMimeFolder()
+    {
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mime");
+    }
+    
+    private static string GetMimePackagesFolder()
+    {
+        return Path.Combine(GetMimeFolder(), "packages");
+    }
+
+    private static string GetMimeFilePath(string mimeFolder, string mimeType)
+    {
+        return Path.Combine(mimeFolder, mimeType.Split("/")[1] + ".xml");
     }
 }
 

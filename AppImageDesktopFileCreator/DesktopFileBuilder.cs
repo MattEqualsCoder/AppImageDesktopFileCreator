@@ -19,6 +19,7 @@ public class DesktopFileBuilder(string appId, string appName)
     private readonly List<CustomAction> _customActions = [];
     private bool _addUninstallAction;
     private readonly List<string> _additionalUninstallPaths = [];
+    private CustomMimeTypeInfo? _mimeTypeInfo;
 
     /// <summary>
     /// Adds a window class to help desktop environments identify the window
@@ -153,6 +154,18 @@ public class DesktopFileBuilder(string appId, string appName)
         return this;
     }
 
+    public DesktopFileBuilder WithMimeType(string mimeType, string description, string globPattern, bool autoAssociate)
+    {
+        _mimeTypeInfo = new CustomMimeTypeInfo
+        {
+            MimeType = mimeType,
+            Description = description,
+            GlobPattern = globPattern,
+            AutoAssociate = autoAssociate
+        };
+        return this;
+    }
+    
     /// <summary>
     /// Build the desktop file
     /// </summary>
@@ -169,7 +182,8 @@ public class DesktopFileBuilder(string appId, string appName)
             Icons = _icons,
             CustomActions = _customActions,
             AddUninstallAction = _addUninstallAction,
-            AdditionalUninstallPaths = _additionalUninstallPaths
+            AdditionalUninstallPaths = _additionalUninstallPaths,
+            CustomMimeTypeInfo = _mimeTypeInfo,
         });
     }
 }

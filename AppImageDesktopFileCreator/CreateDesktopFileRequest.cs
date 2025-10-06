@@ -11,6 +11,7 @@ public class CreateDesktopFileRequest
     public List<CustomAction>? CustomActions { get; set; }
     public bool AddUninstallAction { get; set; }
     public List<string>? AdditionalUninstallPaths { get; set; }
+    public CustomMimeTypeInfo? CustomMimeTypeInfo { get; set; }
 }
 
 public class CustomAction
@@ -27,4 +28,12 @@ public class DesktopIcon
     public required int Size { get; init; }
     public required Stream Stream { get; init; }
     public required string Extension { get; init; }
+}
+
+public class CustomMimeTypeInfo
+{
+    public required string MimeType { get; init; }
+    public required string Description { get; init; }
+    public required string GlobPattern { get; init; }
+    public bool AutoAssociate { get; init; }
 }
