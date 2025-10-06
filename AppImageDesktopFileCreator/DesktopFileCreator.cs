@@ -3,6 +3,8 @@ using System.Runtime.Versioning;
 using System.Text;
 using IniParser;
 using IniParser.Model;
+using IniParser.Model.Configuration;
+using IniParser.Model.Formatting;
 
 namespace AppImageDesktopFileCreator;
 
@@ -255,7 +257,7 @@ public static class DesktopFileCreator
         var description = request.CustomMimeTypeInfo?.Description;
         var globPattern = request.CustomMimeTypeInfo?.GlobPattern;
 
-        if (string.IsNullOrEmpty(mimeType) || mimeType.Contains('/') || mimeType.Split("/").Length != 2)
+        if (string.IsNullOrEmpty(mimeType) || !mimeType.Contains('/') || mimeType.Split("/").Length != 2)
         {
             throw new InvalidOperationException("Invalid mime type");
         }
@@ -284,7 +286,7 @@ public static class DesktopFileCreator
         mimeDetails = mimeDetails.Replace("\r\n", "\n");
         File.WriteAllText(mimePath, mimeDetails);
 
-        var mimeListPath = Path.Combine(GetDesktopFolder(), "mimeapps.list");
+        var mimeListPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "mimeapps.list");
 
         var parser = new FileIniDataParser();
         var data = new IniData();
@@ -307,8 +309,16 @@ public static class DesktopFileCreator
             }
             data["Added Associations"][mimeType] = Path.GetFileName(pathData.DesktopFilePath);
         }
-        
-        parser.WriteFile(mimeListPath, data);
+
+        var formatter = new DefaultIniDataFormatter
+        {
+            Configuration =
+            {
+                AssigmentSpacer = ""
+            }
+        };
+        var iniString = data.ToString(formatter) ?? "";
+        File.WriteAllText(mimeListPath, iniString);
 
         if (!UpdateMimeDatabase())
         {
