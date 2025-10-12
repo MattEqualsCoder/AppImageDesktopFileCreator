@@ -3,7 +3,6 @@ using System.Runtime.Versioning;
 using System.Text;
 using IniParser;
 using IniParser.Model;
-using IniParser.Model.Configuration;
 using IniParser.Model.Formatting;
 
 namespace AppImageDesktopFileCreator;
@@ -15,6 +14,12 @@ public static class DesktopFileCreator
     {
         var appImageFilePath = Environment.GetEnvironmentVariable("APPIMAGE");
         if (string.IsNullOrEmpty(appImageFilePath) || !File.Exists(appImageFilePath))
+        {
+            return true;
+        }
+        
+        var mountPath = Environment.GetEnvironmentVariable("APPDIR");
+        if (string.IsNullOrEmpty(mountPath) || !Directory.Exists(mountPath))
         {
             return true;
         }
@@ -41,6 +46,16 @@ public static class DesktopFileCreator
                 ErrorMessage = "APPIMAGE missing from environment or the file is not found"
             };
         }
+        
+        var mountPath = Environment.GetEnvironmentVariable("APPDIR");
+        if (string.IsNullOrEmpty(mountPath) || !Directory.Exists(mountPath))
+        {
+            return new CreateDesktopFileResponse
+            {
+                Success = false,
+                ErrorMessage = "APPDIR missing from environment or the directory is not found"
+            };
+        }
 
         var desktopFolderPath = GetDesktopFolder();
 
@@ -64,12 +79,17 @@ public static class DesktopFileCreator
         {
             AppImagePath = appImageFilePath,
             AppImageFolder = Path.GetDirectoryName(appImageFilePath) ?? "",
-            DesktopFilePath = GetDesktopFileName(desktopFolderPath, request.AppId),
+            SanitizedAppImagePath = GetEscapedPathForDesktop(appImageFilePath),
+            MountFolder = mountPath,
+            DesktopFilePath = Path.Combine(desktopFolderPath, $"{request.AppId}.desktop")
         };
+
+        List<string> addedFiles = [pathData.DesktopFilePath];
 
         try
         {
-            CreateIcons(request, pathData);
+            var icons = CreateIcons(pathData);
+            addedFiles.AddRange(icons);
         }
         catch (Exception e)
         {
@@ -84,7 +104,7 @@ public static class DesktopFileCreator
         {
             if (request.AddUninstallAction)
             {
-                CreateUninstallFile(request, pathData);
+                addedFiles.Add(CreateUninstallFile(request, pathData));
             }
         }
         catch (Exception e)
@@ -116,7 +136,7 @@ public static class DesktopFileCreator
         {
             if (request.CustomMimeTypeInfo != null)
             {
-                mimeTypeSuccessful = CreateMimeTypeFiles(request, pathData, out mimeTypeError);
+                mimeTypeSuccessful = CreateMimeTypeFiles(request, pathData, addedFiles, out mimeTypeError);
             }
         }
         catch (Exception e)
@@ -125,7 +145,8 @@ public static class DesktopFileCreator
             {
                 Success = true,
                 MimeTypeSuccessful = false,
-                MimeTypeError = $"Failed creating mime type file: {e.Message}"
+                MimeTypeError = $"Failed creating mime type file: {e.Message}",
+                AddedFiles = addedFiles,
             };
         }
         
@@ -133,11 +154,12 @@ public static class DesktopFileCreator
         {
             Success = true,
             MimeTypeSuccessful = mimeTypeSuccessful,
-            MimeTypeError = mimeTypeError
+            MimeTypeError = mimeTypeError,
+            AddedFiles = addedFiles
         };
     }
     
-    private static void CreateIcons(CreateDesktopFileRequest request, PathData pathData)
+    private static List<string> CreateIcons(PathData pathData)
     {
         var iconFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".icons");
 
@@ -146,33 +168,21 @@ public static class DesktopFileCreator
             Directory.CreateDirectory(iconFolder);
         }
 
-        string? nonSizedPngIconPath = null;
-        List<string> allPaths = [];
-        
-        foreach (var icon in request.Icons)
+        var hiColorFolder = Path.Combine(iconFolder, "hicolor");
+        if (!Directory.Exists(hiColorFolder))
         {
-            var folderPath = icon.Size > 0 ? CreateIconDirectory(iconFolder, icon.Size) : iconFolder;
-            var extension = icon.Extension.StartsWith('.') ? icon.Extension.ToLower() : "." + icon.Extension.ToLower();
-            var iconPath = Path.Combine(folderPath, $"{request.AppId}{extension}");
-            using var fileStream = new FileStream(iconPath, FileMode.Create);
-            for (var i = 0; i < icon.Stream.Length; i++)
-            {
-                fileStream.WriteByte((byte)icon.Stream.ReadByte());
-            }
-            fileStream.Close();
-            allPaths.Add(iconPath);
-
-            if (icon.Size == 0 || extension != ".png")
-            {
-                nonSizedPngIconPath = iconPath;
-            }
+            Directory.CreateDirectory(hiColorFolder);
         }
 
-        pathData.IconPaths = allPaths;
-        pathData.SelectedIcon = nonSizedPngIconPath ?? request.AppId;
+        var copyFromFolder = Path.Combine(pathData.MountFolder, "usr", "share", "icons", "hicolor");
+
+        List<string> iconPaths = [];
+        CopyFilesRecursively(new DirectoryInfo(copyFromFolder), new DirectoryInfo(hiColorFolder), iconPaths);
+        pathData.IconPaths = iconPaths;
+        return iconPaths;
     }
 
-    private static void CreateUninstallFile(CreateDesktopFileRequest request, PathData pathData)
+    private static string CreateUninstallFile(CreateDesktopFileRequest request, PathData pathData)
     {
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "app-image-uninstalls");
@@ -212,46 +222,87 @@ public static class DesktopFileCreator
         
         File.WriteAllText(pathData.UninstallFilePath, uninstallFileText + Environment.NewLine);
         File.SetUnixFileMode(pathData.UninstallFilePath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupExecute);
+
+        return pathData.UninstallFilePath;
     }
 
     private static void CreateDesktopFile(CreateDesktopFileRequest request, PathData pathData)
     {
-        var desktopFileText = ApplyReplacements(Templates.DesktopFile, request, pathData);
+        var desktopFile = Directory.EnumerateFiles(pathData.MountFolder, "*.desktop", SearchOption.TopDirectoryOnly).FirstOrDefault();
 
-        var actionNames = new List<string>();
-        var actionText = new StringBuilder();
-        
-        foreach (var customAction in request.CustomActions ?? [])
+        if (string.IsNullOrEmpty(desktopFile))
         {
-            actionNames.Add(customAction.Code);
-            actionText.AppendLine();
-            actionText.AppendLine($"[Desktop Action {customAction.Code}]");
-            actionText.AppendLine($"Name={customAction.Name}");
-            actionText.AppendLine($"Exec={ApplyReplacements(customAction.Command, request, pathData)}");
+            throw new FileNotFoundException("Unable to find desktop file");
+        }
+        
+        var desktopText = File.ReadAllLines(desktopFile);
+        var execLine = desktopText.FirstOrDefault(x => x.StartsWith("Exec="));
+        
+        if (string.IsNullOrEmpty(execLine))
+        {
+            throw new InvalidOperationException("Unable to find exec line in desktop file");
+        }
 
-            if (!string.IsNullOrEmpty(customAction.Icon))
+        execLine = execLine.Split("=", 2)[1];
+
+        var mimeInsertIndex = 0;
+        var insertedMimeType = false;
+        var insertedActionsType = false;
+        
+        var stringBuilder = new StringBuilder();
+        foreach (var line in desktopText)
+        {
+            if (line.StartsWith("Actions="))
             {
-                actionText.AppendLine($"Icon={customAction.Icon}");
+                var actions = line.Split("=", 2)[1].Split(";");
+                if (request.CustomActions?.Count > 0)
+                {
+                    actions = actions.Concat(request.CustomActions.Select(x => x.Name)).ToArray();
+                }
+                var actionCodeList = string.Join(";", actions);
+                stringBuilder.AppendLine($"Actions={actionCodeList}");
+                insertedActionsType = true;
+            }
+            else if (line.StartsWith("Mime=") && request.CustomMimeTypeInfo != null)
+            {
+                stringBuilder.AppendLine($"MimeType={request.CustomMimeTypeInfo.MimeType}");
+                insertedMimeType = true;
+            }
+            else
+            {
+                if (line.StartsWith("Categories"))
+                {
+                    mimeInsertIndex = stringBuilder.Length;
+                }
+                stringBuilder.AppendLine(line.Replace(execLine, pathData.SanitizedAppImagePath));
             }
         }
 
-        if (request.CustomMimeTypeInfo != null)
+        if (!insertedActionsType && request.CustomActions?.Count > 0)
         {
-            desktopFileText += Environment.NewLine + $"MimeType={request.CustomMimeTypeInfo.MimeType}";
+            var actions = request.CustomActions.Select(x => x.Code);
+            var actionCodeList = string.Join(";", actions);
+            stringBuilder.AppendLine($"Actions={actionCodeList}");
+        }
+        
+        if (!insertedMimeType && request.CustomMimeTypeInfo != null)
+        {
+            stringBuilder.Insert(mimeInsertIndex, $"MimeType={request.CustomMimeTypeInfo.MimeType}{Environment.NewLine}");
         }
 
-        if (actionNames.Count > 0)
+        foreach (var customAction in request.CustomActions ?? [])
         {
-            var actionCodeList = string.Join(";", actionNames);
-            desktopFileText += Environment.NewLine + $"Actions={actionCodeList}" + Environment.NewLine + actionText;
+            stringBuilder.AppendLine();
+            stringBuilder.AppendLine($"[Desktop Action {customAction.Code}]");
+            stringBuilder.AppendLine($"Name={customAction.Name}");
+            stringBuilder.AppendLine($"Exec={ApplyReplacements(customAction.Command, request, pathData)}");
         }
         
-        desktopFileText = desktopFileText.Replace("\r\n", "\n");
-        
-        File.WriteAllText(pathData.DesktopFilePath, desktopFileText + Environment.NewLine);
+        stringBuilder.AppendLine();
+        File.WriteAllText(pathData.DesktopFilePath, stringBuilder.ToString());
     }
 
-    private static bool CreateMimeTypeFiles(CreateDesktopFileRequest request, PathData pathData, out string? error)
+    private static bool CreateMimeTypeFiles(CreateDesktopFileRequest request, PathData pathData, List<string> addedFiles, out string? error)
     {
         var mimeType = request.CustomMimeTypeInfo?.MimeType;
         var description = request.CustomMimeTypeInfo?.Description;
@@ -285,6 +336,7 @@ public static class DesktopFileCreator
         mimeDetails = mimeDetails.Replace("%GlobPattern%", globPattern);
         mimeDetails = mimeDetails.Replace("\r\n", "\n");
         File.WriteAllText(mimePath, mimeDetails);
+        addedFiles.Add(mimePath);
 
         var mimeListPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "mimeapps.list");
 
@@ -392,40 +444,12 @@ public static class DesktopFileCreator
     private static string ApplyReplacements(string toUpdate, CreateDesktopFileRequest request, PathData pathData)
     {
         toUpdate = toUpdate.Replace("%AppName%", request.AppName);
-        toUpdate = toUpdate.Replace("%AppClass%", request.WindowClass);
-        toUpdate = toUpdate.Replace("%AppName%", request.AppName);
-        toUpdate = toUpdate.Replace("%AppDescription%", request.AppDescription);
         toUpdate = toUpdate.Replace("%AppPath%", pathData.AppImagePath);
         toUpdate = toUpdate.Replace("%EscapedAppPath%", GetEscapedPathForDesktop(pathData.AppImagePath));
-        toUpdate = toUpdate.Replace("%Category%", request.DesktopFileCategory);
-        toUpdate = toUpdate.Replace("%IconPath%", pathData.SelectedIcon);
         toUpdate = toUpdate.Replace("%FolderPath%", pathData.AppImageFolder);
         toUpdate = toUpdate.Replace("%DesktopFilePath%", pathData.DesktopFilePath);
         toUpdate = toUpdate.Replace("%UninstallFilePath%", pathData.UninstallFilePath);
         return toUpdate;
-    }
-
-    private static string CreateIconDirectory(string iconFolder, int size)
-    {
-        iconFolder = Path.Combine(iconFolder, "hicolor");
-        if (!Directory.Exists(iconFolder))
-        {
-            Directory.CreateDirectory(iconFolder);
-        }
-        
-        iconFolder = Path.Combine(iconFolder, $"{size}x{size}");
-        if (!Directory.Exists(iconFolder))
-        {
-            Directory.CreateDirectory(iconFolder);
-        }
-        
-        iconFolder = Path.Combine(iconFolder, "apps");
-        if (!Directory.Exists(iconFolder))
-        {
-            Directory.CreateDirectory(iconFolder);
-        }
-
-        return iconFolder;
     }
 
     private static string GetDesktopFolder()
@@ -457,14 +481,30 @@ public static class DesktopFileCreator
     {
         return Path.Combine(mimeFolder, mimeType.Split("/")[1] + ".xml");
     }
+    
+    private static void CopyFilesRecursively(DirectoryInfo source, DirectoryInfo target, List<string> outputPaths) 
+    {
+        foreach (var dir in source.GetDirectories())
+        {
+            CopyFilesRecursively(dir, target.CreateSubdirectory(dir.Name), outputPaths);
+        }
+            
+        foreach (var file in source.GetFiles())
+        {
+            var destination = Path.Combine(target.FullName, file.Name);
+            file.CopyTo(destination, overwrite: true);
+            outputPaths.Add(destination);
+        }
+    }
 }
 
 internal class PathData
 {
     public required string AppImagePath { get; init; }
     public required string AppImageFolder { get; init; }
+    public required string SanitizedAppImagePath { get; init; }
+    public required string MountFolder { get; init; }
     public required string DesktopFilePath { get; init; }
-    public string? SelectedIcon { get; set; }
     public List<string>? IconPaths { get; set; }
     public string? UninstallFilePath { get; set; }
 }
