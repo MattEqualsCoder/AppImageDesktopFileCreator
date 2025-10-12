@@ -3,7 +3,7 @@
 using System.Diagnostics;
 using AppImageDesktopFileCreator;
 
-var file = args.FirstOrDefault() ?? "/home/matt/Downloads/SMZ3CasRandomizer_9.9.10-beta.1/SMZ3CasRandomizer.x86_64.AppImage";
+var file = args.FirstOrDefault() ?? "/home/matt/Source/MSUScripter/Setup/Output/MSUScripter.x86_64.AppImage";
 
 if (string.IsNullOrEmpty(file) || !File.Exists(file))
 {

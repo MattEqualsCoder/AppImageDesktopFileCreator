@@ -176,10 +176,11 @@ public static class DesktopFileCreator
 
         var copyFromFolder = Path.Combine(pathData.MountFolder, "usr", "share", "icons", "hicolor");
 
-        List<string> iconPaths = [];
-        CopyFilesRecursively(new DirectoryInfo(copyFromFolder), new DirectoryInfo(hiColorFolder), iconPaths);
-        pathData.IconPaths = iconPaths;
-        return iconPaths;
+        List<IconInfo> icons = [];
+        CopyFilesRecursively(new DirectoryInfo(copyFromFolder), new DirectoryInfo(hiColorFolder), icons);
+        pathData.IconPaths = icons.Select(x => x.Path).ToList();
+        pathData.PrimaryIcon = icons.OrderByDescending(x => x.Size).FirstOrDefault()?.Path;
+        return pathData.IconPaths ;
     }
 
     private static string CreateUninstallFile(CreateDesktopFileRequest request, PathData pathData)
@@ -267,6 +268,10 @@ public static class DesktopFileCreator
             {
                 stringBuilder.AppendLine($"MimeType={request.CustomMimeTypeInfo.MimeType}");
                 insertedMimeType = true;
+            }
+            else if (line.StartsWith("Icon=") && !string.IsNullOrEmpty(pathData.PrimaryIcon))
+            {
+                stringBuilder.AppendLine($"Icon={GetEscapedPathForDesktop(pathData.PrimaryIcon)}");
             }
             else
             {
@@ -482,18 +487,40 @@ public static class DesktopFileCreator
         return Path.Combine(mimeFolder, mimeType.Split("/")[1] + ".xml");
     }
     
-    private static void CopyFilesRecursively(DirectoryInfo source, DirectoryInfo target, List<string> outputPaths) 
+    private static void CopyFilesRecursively(DirectoryInfo source, DirectoryInfo target, List<IconInfo> icons) 
     {
         foreach (var dir in source.GetDirectories())
         {
-            CopyFilesRecursively(dir, target.CreateSubdirectory(dir.Name), outputPaths);
+            CopyFilesRecursively(dir, target.CreateSubdirectory(dir.Name), icons);
         }
             
         foreach (var file in source.GetFiles())
         {
             var destination = Path.Combine(target.FullName, file.Name);
             file.CopyTo(destination, overwrite: true);
-            outputPaths.Add(destination);
+
+            var fileExtension = Path.GetExtension(file.Name).ToLower();
+
+            if (fileExtension == ".svg")
+            {
+                icons.Add(new IconInfo()
+                {
+                    Size = Int32.MaxValue,
+                    Path = destination
+                });
+            }
+            else if (fileExtension == ".png")
+            {
+                var sizeFolder = file.Directory?.Parent?.Name;
+                if (sizeFolder?.Contains("x") == true && int.TryParse(sizeFolder.Split('x')[1], out var size))
+                {
+                    icons.Add(new IconInfo()
+                    {
+                        Size = size,
+                        Path = destination
+                    });
+                }
+            }
         }
     }
 }
@@ -507,4 +534,11 @@ internal class PathData
     public required string DesktopFilePath { get; init; }
     public List<string>? IconPaths { get; set; }
     public string? UninstallFilePath { get; set; }
+    public string? PrimaryIcon { get; set; }
+}
+
+internal class IconInfo
+{
+    public required int Size { get; set; }
+    public required string Path { get; set; }
 }
