@@ -179,8 +179,19 @@ public static class DesktopFileCreator
         List<IconInfo> icons = [];
         CopyFilesRecursively(new DirectoryInfo(copyFromFolder), new DirectoryInfo(hiColorFolder), icons);
         pathData.IconPaths = icons.Select(x => x.Path).ToList();
-        pathData.PrimaryIcon = icons.OrderByDescending(x => x.Size).FirstOrDefault()?.Path;
-        return pathData.IconPaths ;
+
+        var primaryIcon = icons.OrderByDescending(x => x.Size).FirstOrDefault();
+        if (primaryIcon != null)
+        {
+            var primaryIconFileName = Path.GetFileNameWithoutExtension(primaryIcon.Path).Replace(".", "_");
+            var extension = Path.GetExtension(primaryIcon.Path);
+            var targetPrimaryIcon = Path.Combine(iconFolder, $"{primaryIconFileName}{extension}");
+            File.Copy(primaryIcon.Path, targetPrimaryIcon);
+            pathData.PrimaryIcon = targetPrimaryIcon;
+            pathData.IconPaths.Add(targetPrimaryIcon);
+        }
+        
+        return pathData.IconPaths;
     }
 
     private static string CreateUninstallFile(CreateDesktopFileRequest request, PathData pathData)
