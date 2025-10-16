@@ -11,7 +11,7 @@ var file = args.FirstOrDefault() ?? "/home/matt/Downloads/MSURandomizer.x86_64.A
 // }
 
 Environment.SetEnvironmentVariable("APPIMAGE", file);
-var exists = DesktopFileCreator.DoesDesktopFileExists("org.mattequalscoder.msurandomizer");
+var exists = DesktopFileCreator.DoesDesktopFileExist("org.mattequalscoder.msurandomizer");
 
 var response = new DesktopFileBuilder("org.mattequalscoder.msurandomizer", "MSU Randomizer")
     .WithDebugAppImage(file)
