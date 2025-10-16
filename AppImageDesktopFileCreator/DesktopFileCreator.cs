@@ -186,7 +186,7 @@ public static class DesktopFileCreator
             var primaryIconFileName = Path.GetFileNameWithoutExtension(primaryIcon.Path).Replace(".", "_");
             var extension = Path.GetExtension(primaryIcon.Path);
             var targetPrimaryIcon = Path.Combine(iconFolder, $"{primaryIconFileName}{extension}");
-            File.Copy(primaryIcon.Path, targetPrimaryIcon);
+            File.Copy(primaryIcon.Path, targetPrimaryIcon, true);
             pathData.PrimaryIcon = targetPrimaryIcon;
             pathData.IconPaths.Add(targetPrimaryIcon);
         }

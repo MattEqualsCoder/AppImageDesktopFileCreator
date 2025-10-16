@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.Versioning;
 
 namespace AppImageDesktopFileCreator;
@@ -83,6 +84,52 @@ public class DesktopFileBuilder(string appId, string appName)
             GlobPattern = globPattern,
             AutoAssociate = autoAssociate
         };
+        return this;
+    }
+
+    public DesktopFileBuilder WithDebugAppImage(string? appImagePath, string? squashPath = null)
+    {
+        if (string.IsNullOrEmpty(appImagePath) || !File.Exists(appImagePath))
+        {
+            return this;
+        }
+        
+        #if DEBUG
+        if (string.IsNullOrEmpty(squashPath))
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            if (Directory.Exists(tempPath))
+            {
+                Directory.Delete(tempPath, true);
+            }
+            Directory.CreateDirectory(tempPath);
+            Environment.CurrentDirectory = tempPath;
+            
+            var tempAppImagePath = Path.Combine(tempPath, "test.AppImage");
+            File.Copy(appImagePath, tempAppImagePath);
+
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = tempAppImagePath,
+                    Arguments = "--appimage-extract",
+                    UseShellExecute = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = tempPath,
+                }
+            };
+
+            process.Start();
+            process.WaitForExit();
+
+            appImagePath = tempAppImagePath;
+            squashPath = Path.Combine(tempPath, "squashfs-root");
+        }
+        Environment.SetEnvironmentVariable("APPIMAGE", appImagePath);
+        Environment.SetEnvironmentVariable("APPDIR", squashPath);
+        #endif
+
         return this;
     }
     
