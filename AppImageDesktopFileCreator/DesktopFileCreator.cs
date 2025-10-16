@@ -10,20 +10,14 @@ namespace AppImageDesktopFileCreator;
 [SupportedOSPlatform("linux")]
 public static class DesktopFileCreator
 {
-    public static bool CheckIfDesktopFileExists(string appId)
+    public static bool DoesDesktopFileExists(string appId, string? appImageFilePath = null)
     {
-        var appImageFilePath = Environment.GetEnvironmentVariable("APPIMAGE");
+        appImageFilePath ??= Environment.GetEnvironmentVariable("APPIMAGE");
         if (string.IsNullOrEmpty(appImageFilePath) || !File.Exists(appImageFilePath))
         {
-            return true;
+            return false;
         }
-        
-        var mountPath = Environment.GetEnvironmentVariable("APPDIR");
-        if (string.IsNullOrEmpty(mountPath) || !Directory.Exists(mountPath))
-        {
-            return true;
-        }
-        
+
         var desktopFilePath = GetDesktopFileName(GetDesktopFolder(), appId);
         if (!File.Exists(desktopFilePath))
         {

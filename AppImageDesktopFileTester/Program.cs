@@ -2,13 +2,16 @@
 
 using AppImageDesktopFileCreator;
 
-var file = args.FirstOrDefault() ?? "/home/matt/Downloads/MSURandomizer_3.2.0/MSURandomizer.x86_64.AppImage";
+var file = args.FirstOrDefault() ?? "/home/matt/Downloads/MSURandomizer.x86_64.AppImage";
 
-if (string.IsNullOrEmpty(file) || !File.Exists(file))
-{
-    Console.WriteLine("File not found");
-    return;
-}
+// if (string.IsNullOrEmpty(file) || !File.Exists(file))
+// {
+//     Console.WriteLine("File not found");
+//     return;
+// }
+
+Environment.SetEnvironmentVariable("APPIMAGE", file);
+var exists = DesktopFileCreator.DoesDesktopFileExists("org.mattequalscoder.msurandomizer");
 
 var response = new DesktopFileBuilder("org.mattequalscoder.msurandomizer", "MSU Randomizer")
     .WithDebugAppImage(file)
