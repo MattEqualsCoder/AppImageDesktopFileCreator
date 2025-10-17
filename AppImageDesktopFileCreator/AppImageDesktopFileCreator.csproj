@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>MattEqualsCoder.AppImageDesktopFileCreator</PackageId>
-        <Version>0.3.5</Version>
+        <Version>0.3.6</Version>
         <Title>AppImage Desktop File Creator</Title>
         <Authors>MattEqualsCoder</Authors>
         <PackageProjectUrl>https://github.com/MattEqualsCoder/AppImageDesktopFileCreator</PackageProjectUrl>

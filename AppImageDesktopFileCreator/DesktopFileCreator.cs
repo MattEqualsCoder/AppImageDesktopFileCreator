@@ -254,6 +254,7 @@ public static class DesktopFileCreator
         var mimeInsertIndex = 0;
         var insertedMimeType = false;
         var insertedActionsType = false;
+        var insertedPathFolder = false;
         
         var stringBuilder = new StringBuilder();
         foreach (var line in desktopText)
@@ -278,6 +279,11 @@ public static class DesktopFileCreator
             {
                 stringBuilder.AppendLine($"Icon={GetEscapedPathForDesktop(pathData.PrimaryIcon)}");
             }
+            else if (line.StartsWith("Path="))
+            {
+                stringBuilder.AppendLine($"Path={GetEscapedPathForDesktop(pathData.AppImageFolder)}");
+                insertedPathFolder = true;
+            }
             else
             {
                 if (line.StartsWith("Categories"))
@@ -298,6 +304,11 @@ public static class DesktopFileCreator
         if (!insertedMimeType && request.CustomMimeTypeInfo != null)
         {
             stringBuilder.Insert(mimeInsertIndex, $"MimeType={request.CustomMimeTypeInfo.MimeType}{Environment.NewLine}");
+        }
+
+        if (!insertedPathFolder)
+        {
+            stringBuilder.Insert(mimeInsertIndex, $"Path={GetEscapedPathForDesktop(pathData.AppImageFolder)}{Environment.NewLine}");
         }
 
         foreach (var customAction in request.CustomActions ?? [])

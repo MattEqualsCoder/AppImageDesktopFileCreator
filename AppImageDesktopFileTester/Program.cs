@@ -2,7 +2,7 @@
 
 using AppImageDesktopFileCreator;
 
-var file = args.FirstOrDefault() ?? "/home/matt/Downloads/MSURandomizer.x86_64.AppImage";
+var file = args.FirstOrDefault() ?? "/home/matt/Downloads/MSURandomizer_3.2.0-rc.1/MSURandomizer.x86_64.AppImage";
 
 // if (string.IsNullOrEmpty(file) || !File.Exists(file))
 // {
